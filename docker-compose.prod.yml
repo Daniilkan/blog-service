@@ -1,0 +1,45 @@
+# Used on the VPS by the deploy job. Unlike docker-compose.yml (which builds
+# the image locally for development), this pulls the image already built and
+# pushed to Docker Hub by the CI/CD pipeline.
+#
+# Usage on the server:
+#   docker compose -f docker-compose.prod.yml pull web
+#   docker compose -f docker-compose.prod.yml up -d
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: blog_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-blog}
+      POSTGRES_USER: ${POSTGRES_USER:-blog_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-blog_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-blog_user} -d ${POSTGRES_DB:-blog}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    image: ${DOCKERHUB_USERNAME}/blog-backend:${IMAGE_TAG:-latest}
+    container_name: blog_web
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+      USE_SQLITE: "False"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+      - static_data:/app/staticfiles
+
+volumes:
+  postgres_data:
+  static_data:
